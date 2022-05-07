@@ -289,19 +289,23 @@ int main(int argc, char **argv)
                 }
             }
             else if (c == 'r') {
-                bool isAribData = strcmp(GetSmallString(argv[++i]), "arib-data") == 0;
-                if (isAribData) {
+                ++i;
+                bool isAribData = strcmp(GetSmallString(argv[i]), "arib-data") == 0;
+                bool isAribEpg = strcmp(GetSmallString(argv[i]), "arib-epg") == 0;
+                if (isAribData || isAribEpg) {
                     psiExtractor.SetProgramNumberOrIndex(-1);
                     psiExtractor.AddTargetPid(17);
                     psiExtractor.AddTargetPid(18);
                     psiExtractor.AddTargetPid(20);
                     psiExtractor.AddTargetPid(31);
                     psiExtractor.AddTargetPid(36);
-                    psiExtractor.AddTargetStreamType(11);
-                    psiExtractor.AddTargetStreamType(12);
-                    psiExtractor.AddTargetStreamType(13);
+                    if (isAribData) {
+                        psiExtractor.AddTargetStreamType(11);
+                        psiExtractor.AddTargetStreamType(12);
+                        psiExtractor.AddTargetStreamType(13);
+                    }
                 }
-                invalid = !isAribData;
+                invalid = !isAribData && !isAribEpg;
             }
             else if (c == 'b') {
                 arc.dictionaryMaxBuffSize = static_cast<size_t>(strtol(GetSmallString(argv[++i]), nullptr, 10) * 1024);

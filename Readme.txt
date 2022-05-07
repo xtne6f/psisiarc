@@ -21,6 +21,7 @@ psisiarc [-p pids][-n prog_num_or_index][-t stream_types][-r preset][-b maxbuf_k
 -r preset
   事前定義されたオプションを追加する。今のところ以下のみ。
   - "arib-data": オプション -p 17/18/20/31/36 -n -1 -t 11/12/13 と等価。データ放送の保存用。
+  - "arib-epg": オプション -p 17/18/20/31/36 -n -1 と等価。番組情報の保存用。
 
 -b maxbuf_kbytes (kbytes), 8<=range<=1048576, default=16384
   書庫を展開するとき必要になる最大メモリ占有量の目安。
