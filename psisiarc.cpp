@@ -36,6 +36,8 @@ struct ARCHIVE_CONTEXT
     uint32_t currentTime;
     uint16_t currentRelTime;
     uint16_t sameTimeCodeCount;
+    uint32_t lastWriteTime;
+    uint32_t writeInterval;
     FILE *fp;
 };
 
@@ -51,6 +53,23 @@ void WriteArchive(ARCHIVE_CONTEXT &arc)
         arc.timeList.push_back(static_cast<uint8_t>((arc.sameTimeCodeCount - 1) >> 8));
     }
 
+    size_t dictionaryWindowSize = arc.dict.size();
+    if (arc.writeInterval != UNKNOWN_TIME) {
+        // Leave unused items in back of the dictionary
+        for (auto it = arc.lastDict.cbegin(); it != arc.lastDict.end(); ++it) {
+            if (!it->token.empty()) {
+                // Unused item
+                if (dictionaryWindowSize >= 65536 - CODE_NUMBER_BEGIN ||
+                    arc.dictionaryBuffSize + 2 + it->token.size() > arc.dictionaryMaxBuffSize) {
+                    break;
+                }
+                // Leave it
+                ++dictionaryWindowSize;
+                arc.dictionaryBuffSize += 2 + it->token.size();
+            }
+        }
+    }
+
     uint8_t header[32] = {
         // Magic number
         0x50, 0x73, 0x73, 0x63, 0x0d, 0x0a, 0x9a, 0x0a,
@@ -60,9 +79,8 @@ void WriteArchive(ARCHIVE_CONTEXT &arc)
         static_cast<uint8_t>((arc.timeList.size() / 4) >> 8),
         static_cast<uint8_t>(arc.dict.size()),
         static_cast<uint8_t>(arc.dict.size() >> 8),
-        // Dictionary window size (not in use)
-        static_cast<uint8_t>(arc.dict.size()),
-        static_cast<uint8_t>(arc.dict.size() >> 8),
+        static_cast<uint8_t>(dictionaryWindowSize),
+        static_cast<uint8_t>(dictionaryWindowSize >> 8),
         static_cast<uint8_t>(arc.dictionaryDataSize),
         static_cast<uint8_t>(arc.dictionaryDataSize >> 8),
         static_cast<uint8_t>(arc.dictionaryDataSize >> 16),
@@ -108,6 +126,25 @@ void WriteArchive(ARCHIVE_CONTEXT &arc)
     fwrite(arc.codeList.data(), 1, arc.codeList.size(), arc.fp);
     uint8_t trailer[] = {0x3d, 0x3d, 0x3d, 0x3d};
     fwrite(trailer, 1, (arc.dict.size() + (arc.dictionaryDataSize + 1) / 2 + arc.codeList.size() / 2) % 2 ? 2 : 4, arc.fp);
+    fflush(arc.fp);
+
+    // Leave unused items in back of the dictionary
+    for (auto it = arc.lastDict.begin(); arc.dict.size() < dictionaryWindowSize; ++it) {
+        if (!it->token.empty()) {
+            uint16_t dictIndex = static_cast<uint16_t>(arc.dict.size());
+            uint32_t hash = it->pid;
+            if (it->token.size() >= 4) {
+                hash ^= it->token[it->token.size() - 4] | (it->token[it->token.size() - 3] << 8) |
+                        (it->token[it->token.size() - 2] << 16) |
+                        (static_cast<uint32_t>(it->token[it->token.size() - 1]) << 24);
+            }
+            arc.dictHashMap.emplace(hash, dictIndex);
+            arc.dict.emplace_back();
+            auto &item = arc.dict.back();
+            item.pid = it->pid;
+            item.token.swap(it->token);
+        }
+    }
 
     arc.timeList.clear();
     arc.dict.swap(arc.lastDict);
@@ -120,6 +157,7 @@ void WriteArchive(ARCHIVE_CONTEXT &arc)
     arc.currentTime = UNKNOWN_TIME;
     arc.currentRelTime = 0;
     arc.sameTimeCodeCount = 0;
+    arc.lastWriteTime = UNKNOWN_TIME;
 }
 
 void AddToTimeList(ARCHIVE_CONTEXT &arc, uint32_t pcr11khz)
@@ -152,9 +190,15 @@ void AddToArchive(ARCHIVE_CONTEXT &arc, int pid, int64_t pcr, size_t psiSize, co
     if (psiSize == 0) {
         return;
     }
+    if (arc.lastWriteTime == UNKNOWN_TIME) {
+        arc.lastWriteTime = arc.currentTime;
+    }
     if (arc.timeList.size() / 4 >= 65536 - 4 ||
         arc.dict.size() >= 65536 - CODE_NUMBER_BEGIN ||
-        arc.dictionaryBuffSize + 2 + 4096 > arc.dictionaryMaxBuffSize)
+        arc.dictionaryBuffSize + 2 + 4096 > arc.dictionaryMaxBuffSize ||
+        (arc.currentTime != UNKNOWN_TIME &&
+         arc.lastWriteTime != UNKNOWN_TIME &&
+         ((0x40000000 + arc.currentTime - arc.lastWriteTime) & 0x3fffffff) >= arc.writeInterval))
     {
         WriteArchive(arc);
     }
@@ -234,6 +278,7 @@ int main(int argc, char **argv)
 {
     ARCHIVE_CONTEXT arc;
     arc.dictionaryMaxBuffSize = 16 * 1024 * 1024;
+    arc.writeInterval = UNKNOWN_TIME;
     CPsiExtractor psiExtractor;
 #ifdef _WIN32
     const wchar_t *srcName = L"";
@@ -250,7 +295,7 @@ int main(int argc, char **argv)
             c = ss[1];
         }
         if (c == 'h') {
-            fprintf(stderr, "Usage: psisiarc [-p pids][-n prog_num_or_index][-t stream_types][-r preset][-b maxbuf_kbytes] src dest\n");
+            fprintf(stderr, "Usage: psisiarc [-p pids][-n prog_num_or_index][-t stream_types][-r preset][-i interval][-b maxbuf_kbytes] src dest\n");
             return 2;
         }
         bool invalid = false;
@@ -306,6 +351,13 @@ int main(int argc, char **argv)
                     }
                 }
                 invalid = !isAribData && !isAribEpg;
+            }
+            else if (c == 'i') {
+                arc.writeInterval = static_cast<uint32_t>(strtol(GetSmallString(argv[++i]), nullptr, 10) * 11250);
+                invalid = arc.writeInterval > 600 * 11250;
+                if (arc.writeInterval == 0) {
+                    arc.writeInterval = UNKNOWN_TIME;
+                }
             }
             else if (c == 'b') {
                 arc.dictionaryMaxBuffSize = static_cast<size_t>(strtol(GetSmallString(argv[++i]), nullptr, 10) * 1024);
@@ -378,6 +430,7 @@ int main(int argc, char **argv)
     arc.currentTime = UNKNOWN_TIME;
     arc.currentRelTime = 0;
     arc.sameTimeCodeCount = 0;
+    arc.lastWriteTime = UNKNOWN_TIME;
     arc.fp = destFile ? destFile.get() : stdout;
     FILE *fpSrc = srcFile ? srcFile.get() : stdin;
 
