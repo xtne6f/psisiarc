@@ -2,7 +2,7 @@
 
 使用法:
 
-psisiarc [-p pids][-n prog_num_or_index][-t stream_types][-r preset][-i interval][-b maxbuf_kbytes] src dest
+psisiarc [-p pids][-n prog_num_or_index][-t stream_types][-r preset][-i interval][-b maxbuf_kbytes][-c chapter][-s pattern][-e pattern] src dest
 
 -p pids, default=""
   抽出するTSパケットのPIDを'/'区切りで指定。
@@ -31,6 +31,30 @@ psisiarc [-p pids][-n prog_num_or_index][-t stream_types][-r preset][-i interval
 -b maxbuf_kbytes (kbytes), 8<=range<=1048576, default=16384
   書庫を展開するとき必要になる最大メモリ占有量の目安。
   小さくしすぎると書庫の内部で分割が発生してファイルサイズが大きくなる。
+
+-c chapter, default=""
+  出力をカット編集する場合、Nero/OGM形式のチャプターファイル名。
+  文字コードはUTF-8やShift_JISなどの8bitベースで以下のような形式のもの:
+  > CHAPTER01=00:00:00.000
+  > CHAPTER01NAME=編集点開始
+  > CHAPTER02=01:23:45.678
+  > CHAPTER02NAME=編集点終了
+
+-s pattern, default="^ix"
+  出力をカット編集する場合、カット開始チャプター名のパターン。
+  "^..." (前方一致)、"...$" (後方一致)、"^...$" (完全一致)、または部分一致。
+  非ASCII文字を \x?? (??は16進数)でエスケープできる。
+  大文字小文字は区別されない。
+  たとえばチャプターファイルがShift_JISのとき、チャプター名が"開始"で終わるチャプターでカットしたいなら
+  > -s '\x8A\x4A\x8E\x6E$'
+  のようにする。
+
+-e pattern, default="^ox"
+  出力をカット編集する場合、カット終了チャプター名のパターン。
+  "-s"オプションと同様。
+  たとえばチャプターファイルがShift_JISのとき、チャプター名が"終了"で終わるチャプターまでカットしたいなら
+  > -e '\x8F\x49\x97\xB9$'
+  のようにする。
 
 src
   入力ファイル名、または"-"で標準入力。
