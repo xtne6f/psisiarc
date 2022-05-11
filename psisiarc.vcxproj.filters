@@ -24,12 +24,18 @@
     <ClCompile Include="psiextractor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="psiarchiver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="util.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="psiextractor.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="psiarchiver.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

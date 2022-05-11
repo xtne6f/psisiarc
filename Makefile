@@ -9,7 +9,7 @@ else
 endif
 
 all: $(TARGET)
-$(TARGET): psisiarc.cpp util.cpp util.hpp psiextractor.cpp psiextractor.hpp
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH) -o $@ psisiarc.cpp util.cpp psiextractor.cpp
+$(TARGET): psisiarc.cpp util.cpp util.hpp psiarchiver.cpp psiarchiver.hpp psiextractor.cpp psiextractor.hpp
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH) -o $@ psisiarc.cpp util.cpp psiarchiver.cpp psiextractor.cpp
 clean:
 	$(RM) $(TARGET)

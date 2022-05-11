@@ -152,11 +152,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="psiarchiver.cpp" />
     <ClCompile Include="psiextractor.cpp" />
     <ClCompile Include="psisiarc.cpp" />
     <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="psiarchiver.hpp" />
     <ClInclude Include="psiextractor.hpp" />
     <ClInclude Include="util.hpp" />
   </ItemGroup>
