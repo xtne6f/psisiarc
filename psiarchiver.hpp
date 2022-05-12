@@ -14,7 +14,7 @@ public:
     void SetWriteInterval(uint32_t interval);
     void SetDictionaryMaxBuffSize(size_t size);
     void Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi);
-    void Flush();
+    void Flush(bool suppressTrailer = false);
 
 private:
     struct DICTIONARY_ITEM
@@ -39,6 +39,7 @@ private:
     uint16_t m_sameTimeCodeCount;
     uint32_t m_lastWriteTime;
     uint32_t m_writeInterval;
+    size_t m_trailerSize;
     FILE *m_fp;
 };
 

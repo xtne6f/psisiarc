@@ -10,6 +10,7 @@ CPsiArchiver::CPsiArchiver()
     , m_sameTimeCodeCount(0)
     , m_lastWriteTime(UNKNOWN_TIME)
     , m_writeInterval(UNKNOWN_TIME)
+    , m_trailerSize(0)
     , m_fp(nullptr)
 {
 }
@@ -39,7 +40,7 @@ void CPsiArchiver::Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi)
          m_lastWriteTime != UNKNOWN_TIME &&
          ((0x40000000 + m_currentTime - m_lastWriteTime) & 0x3fffffff) >= m_writeInterval))
     {
-        Flush();
+        Flush(true);
     }
     AddToTimeList(pcr < 0 ? UNKNOWN_TIME : static_cast<uint32_t>(pcr >> 3));
 
@@ -90,9 +91,16 @@ void CPsiArchiver::Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi)
     m_codeList.push_back(static_cast<uint8_t>((CODE_NUMBER_BEGIN + dictIndex) >> 8));
 }
 
-void CPsiArchiver::Flush()
+void CPsiArchiver::Flush(bool suppressTrailer)
 {
+    uint8_t trailer[] = {0x3d, 0x3d, 0x3d, 0x3d};
     if (m_codeList.empty()) {
+        if (!suppressTrailer && m_fp && m_trailerSize > 0) {
+            // Write a pending trailer
+            fwrite(trailer, 1, m_trailerSize, m_fp);
+            m_trailerSize = 0;
+            fflush(m_fp);
+        }
         return;
     }
     if (m_sameTimeCodeCount > 0) {
@@ -120,6 +128,10 @@ void CPsiArchiver::Flush()
     }
 
     if (m_fp) {
+        if (m_trailerSize > 0) {
+            // Write a pending trailer
+            fwrite(trailer, 1, m_trailerSize, m_fp);
+        }
         uint8_t header[32] = {
             // Magic number
             0x50, 0x73, 0x73, 0x63, 0x0d, 0x0a, 0x9a, 0x0a,
@@ -174,8 +186,12 @@ void CPsiArchiver::Flush()
             fwrite(&alignment, 1, 1, m_fp);
         }
         fwrite(m_codeList.data(), 1, m_codeList.size(), m_fp);
-        uint8_t trailer[] = {0x3d, 0x3d, 0x3d, 0x3d};
-        fwrite(trailer, 1, (m_dict.size() + (m_dictionaryDataSize + 1) / 2 + m_codeList.size() / 2) % 2 ? 2 : 4, m_fp);
+
+        m_trailerSize = (m_dict.size() + (m_dictionaryDataSize + 1) / 2 + m_codeList.size() / 2) % 2 ? 2 : 4;
+        if (!suppressTrailer) {
+            fwrite(trailer, 1, m_trailerSize, m_fp);
+            m_trailerSize = 0;
+        }
         fflush(m_fp);
     }
 
