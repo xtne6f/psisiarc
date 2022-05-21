@@ -250,7 +250,6 @@ void CPsiExtractor::ExtractPsiSi(PSI_SI &psiSi, const uint8_t *payload, int payl
                                  const std::function<void (int, const uint8_t *)> &onExtract)
 {
     int copyPos = 0;
-    int copySize = payloadSize;
     if (unitStart) {
         if (payloadSize < 1) {
             psiSi.continuityCounter = psiSi.dataCount = 0;
@@ -260,9 +259,8 @@ void CPsiExtractor::ExtractPsiSi(PSI_SI &psiSi, const uint8_t *payload, int payl
         psiSi.continuityCounter = (psiSi.continuityCounter + 1) & 0x2f;
         if (pointer > 0 && psiSi.continuityCounter == (0x20 | counter)) {
             copyPos = 1;
-            copySize = pointer;
-            if (copySize > 0 && copyPos < payloadSize) {
-                copySize = std::min(copySize, static_cast<int>(sizeof(psiSi.data)) - psiSi.dataCount);
+            if (copyPos + pointer <= payloadSize) {
+                int copySize = std::min(pointer, static_cast<int>(sizeof(psiSi.data)) - psiSi.dataCount);
                 std::copy(payload + copyPos, payload + copyPos + copySize, psiSi.data + psiSi.dataCount);
                 psiSi.dataCount += copySize;
             }
@@ -278,22 +276,29 @@ void CPsiExtractor::ExtractPsiSi(PSI_SI &psiSi, const uint8_t *payload, int payl
         psiSi.continuityCounter = 0x20 | counter;
         psiSi.dataCount = 0;
         copyPos = 1 + pointer;
-        copySize -= copyPos;
     }
     else {
+        if (payloadSize < 1) {
+            // counter is non-incrementing
+            return;
+        }
         psiSi.continuityCounter = (psiSi.continuityCounter + 1) & 0x2f;
         if (psiSi.continuityCounter != (0x20 | counter)) {
             psiSi.continuityCounter = psiSi.dataCount = 0;
             return;
         }
     }
-    if (copySize > 0 && copyPos < payloadSize) {
-        copySize = std::min(copySize, static_cast<int>(sizeof(psiSi.data)) - psiSi.dataCount);
-        std::copy(payload + copyPos, payload + copyPos + copySize, psiSi.data + psiSi.dataCount);
-        psiSi.dataCount += copySize;
-    }
 
-    while (psiSi.dataCount >= 3 && psiSi.data[0] != 0xff) {
+    for (;;) {
+        if (copyPos < payloadSize) {
+            int copySize = std::min(payloadSize - copyPos, static_cast<int>(sizeof(psiSi.data)) - psiSi.dataCount);
+            std::copy(payload + copyPos, payload + copyPos + copySize, psiSi.data + psiSi.dataCount);
+            psiSi.dataCount += copySize;
+            copyPos += copySize;
+        }
+        if (psiSi.dataCount < 3 || psiSi.data[0] == 0xff) {
+            break;
+        }
         // Non-stuffing section
         int sectionLength = ((psiSi.data[1] & 0x0f) << 8) | psiSi.data[2];
         if (psiSi.dataCount < 3 + sectionLength) {
