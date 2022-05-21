@@ -10,3 +10,4 @@
 !*.vcxproj.filters
 !.gitignore
 !Makefile
+*.FileListAbsolute.txt
