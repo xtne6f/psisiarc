@@ -33,15 +33,22 @@ bool CPsiArchiver::Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi)
     if (m_lastWriteTime == UNKNOWN_TIME) {
         m_lastWriteTime = m_currentTime;
     }
+    uint32_t elapsedTime = (0x40000000 + m_currentTime - m_lastWriteTime) & 0x3fffffff;
     bool ret = true;
     if (m_timeList.size() / 4 >= 65536 - 4 ||
         m_dict.size() >= 65536 - CODE_NUMBER_BEGIN ||
         m_dictionaryBuffSize + 2 + 4096 > m_dictionaryMaxBuffSize ||
-        (m_currentTime != UNKNOWN_TIME &&
-         m_lastWriteTime != UNKNOWN_TIME &&
-         ((0x40000000 + m_currentTime - m_lastWriteTime) & 0x3fffffff) >= m_writeInterval))
+        (m_currentTime != UNKNOWN_TIME && elapsedTime >= m_writeInterval))
     {
+        uint32_t currentTime = m_currentTime;
         ret = Flush(true);
+        if (m_lastWriteTime == UNKNOWN_TIME) {
+            m_lastWriteTime = currentTime;
+            // Keep intervals as exact as possible
+            if (currentTime != UNKNOWN_TIME && elapsedTime >= m_writeInterval && elapsedTime < m_writeInterval + 11250) {
+                m_lastWriteTime = (0x40000000 + currentTime - (elapsedTime - m_writeInterval)) & 0x3fffffff;
+            }
+        }
     }
     AddToTimeList(pcr < 0 ? UNKNOWN_TIME : static_cast<uint32_t>(pcr >> 3));
 
