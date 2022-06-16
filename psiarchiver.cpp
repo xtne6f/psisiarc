@@ -25,14 +25,15 @@ void CPsiArchiver::SetDictionaryMaxBuffSize(size_t size)
     m_dictionaryMaxBuffSize = std::min<size_t>(std::max<size_t>(size, 8 * 1024), 1024 * 1024 * 1024);
 }
 
-void CPsiArchiver::Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi)
+bool CPsiArchiver::Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi)
 {
     if (psiSize == 0) {
-        return;
+        return true;
     }
     if (m_lastWriteTime == UNKNOWN_TIME) {
         m_lastWriteTime = m_currentTime;
     }
+    bool ret = true;
     if (m_timeList.size() / 4 >= 65536 - 4 ||
         m_dict.size() >= 65536 - CODE_NUMBER_BEGIN ||
         m_dictionaryBuffSize + 2 + 4096 > m_dictionaryMaxBuffSize ||
@@ -40,7 +41,7 @@ void CPsiArchiver::Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi)
          m_lastWriteTime != UNKNOWN_TIME &&
          ((0x40000000 + m_currentTime - m_lastWriteTime) & 0x3fffffff) >= m_writeInterval))
     {
-        Flush(true);
+        ret = Flush(true);
     }
     AddToTimeList(pcr < 0 ? UNKNOWN_TIME : static_cast<uint32_t>(pcr >> 3));
 
@@ -89,19 +90,21 @@ void CPsiArchiver::Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi)
     }
     m_codeList.push_back(static_cast<uint8_t>(CODE_NUMBER_BEGIN + dictIndex));
     m_codeList.push_back(static_cast<uint8_t>((CODE_NUMBER_BEGIN + dictIndex) >> 8));
+    return ret;
 }
 
-void CPsiArchiver::Flush(bool suppressTrailer)
+bool CPsiArchiver::Flush(bool suppressTrailer)
 {
+    bool ret = true;
     uint8_t trailer[] = {0x3d, 0x3d, 0x3d, 0x3d};
     if (m_codeList.empty()) {
         if (!suppressTrailer && m_fp && m_trailerSize > 0) {
             // Write a pending trailer
-            fwrite(trailer, 1, m_trailerSize, m_fp);
+            ret = ret && WriteBuffer(trailer, m_trailerSize, m_fp);
             m_trailerSize = 0;
-            fflush(m_fp);
+            ret = ret && fflush(m_fp) == 0;
         }
-        return;
+        return ret;
     }
     if (m_sameTimeCodeCount > 0) {
         m_timeList.push_back(static_cast<uint8_t>(m_currentRelTime));
@@ -130,7 +133,7 @@ void CPsiArchiver::Flush(bool suppressTrailer)
     if (m_fp) {
         if (m_trailerSize > 0) {
             // Write a pending trailer
-            fwrite(trailer, 1, m_trailerSize, m_fp);
+            ret = ret && WriteBuffer(trailer, m_trailerSize, m_fp);
         }
         uint8_t header[32] = {
             // Magic number
@@ -158,14 +161,14 @@ void CPsiArchiver::Flush(bool suppressTrailer)
             // Reserved
             0, 0, 0, 0
         };
-        fwrite(header, 1, 32, m_fp);
-        fwrite(m_timeList.data(), 1, m_timeList.size(), m_fp);
+        ret = ret && WriteBuffer(header, 32, m_fp);
+        ret = ret && WriteBuffer(m_timeList.data(), m_timeList.size(), m_fp);
         for (auto it = m_dict.cbegin(); it != m_dict.end(); ++it) {
             uint8_t buf[] = {
                 static_cast<uint8_t>(it->codeOrSize),
                 static_cast<uint8_t>(it->codeOrSize >> 8)
             };
-            fwrite(buf, 1, 2, m_fp);
+            ret = ret && WriteBuffer(buf, 2, m_fp);
         }
         for (auto it = m_dict.cbegin(); it != m_dict.end(); ++it) {
             if (it->codeOrSize < CODE_NUMBER_BEGIN) {
@@ -173,26 +176,26 @@ void CPsiArchiver::Flush(bool suppressTrailer)
                     static_cast<uint8_t>(it->pid),
                     static_cast<uint8_t>(it->pid >> 8 | 0xe0)
                 };
-                fwrite(buf, 1, 2, m_fp);
+                ret = ret && WriteBuffer(buf, 2, m_fp);
             }
         }
         for (auto it = m_dict.cbegin(); it != m_dict.end(); ++it) {
             if (it->codeOrSize < CODE_NUMBER_BEGIN) {
-                fwrite(it->token.data(), 1, it->token.size(), m_fp);
+                ret = ret && WriteBuffer(it->token.data(), it->token.size(), m_fp);
             }
         }
         if (m_dictionaryDataSize % 2) {
             uint8_t alignment = 0xff;
-            fwrite(&alignment, 1, 1, m_fp);
+            ret = ret && WriteBuffer(&alignment, 1, m_fp);
         }
-        fwrite(m_codeList.data(), 1, m_codeList.size(), m_fp);
+        ret = ret && WriteBuffer(m_codeList.data(), m_codeList.size(), m_fp);
 
         m_trailerSize = (m_dict.size() + (m_dictionaryDataSize + 1) / 2 + m_codeList.size() / 2) % 2 ? 2 : 4;
         if (!suppressTrailer) {
-            fwrite(trailer, 1, m_trailerSize, m_fp);
+            ret = ret && WriteBuffer(trailer, m_trailerSize, m_fp);
             m_trailerSize = 0;
         }
-        fflush(m_fp);
+        ret = ret && fflush(m_fp) == 0;
     }
 
     // Leave unused items in back of the dictionary
@@ -225,6 +228,7 @@ void CPsiArchiver::Flush(bool suppressTrailer)
     m_currentRelTime = 0;
     m_sameTimeCodeCount = 0;
     m_lastWriteTime = UNKNOWN_TIME;
+    return ret;
 }
 
 void CPsiArchiver::AddToTimeList(uint32_t pcr11khz)

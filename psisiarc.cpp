@@ -368,9 +368,10 @@ int main(int argc, char **argv)
         if (bufCount == sizeof(buf) || n == 0) {
             int bufPos = resync_ts(buf, bufCount, &unitSize);
             for (int i = bufPos; i + 188 <= bufCount; i += unitSize) {
-                psiExtractor.AddPacket(buf + i, [&psiArchiver, &cutContext](int pid, int64_t pcr, size_t psiSize, const uint8_t *psi) {
+                bool writeFailed = false;
+                psiExtractor.AddPacket(buf + i, [&psiArchiver, &cutContext, &writeFailed](int pid, int64_t pcr, size_t psiSize, const uint8_t *psi) {
                     if (!cutContext.enabled) {
-                        psiArchiver.Add(pid, pcr, psiSize, psi);
+                        writeFailed = !psiArchiver.Add(pid, pcr, psiSize, psi);
                         return;
                     }
                     if (cutContext.initialPcr < 0) {
@@ -388,9 +389,12 @@ int main(int argc, char **argv)
                         cutContext.cutList.pop_back();
                     }
                     if (cutContext.cutList.empty() || cutContext.cutList.back() > pcrMsec) {
-                        psiArchiver.Add(pid, (0x200000000 + pcr - cutContext.totalCutMsec * 90) & 0x1ffffffff, psiSize, psi);
+                        writeFailed = !psiArchiver.Add(pid, (0x200000000 + pcr - cutContext.totalCutMsec * 90) & 0x1ffffffff, psiSize, psi);
                     }
                 });
+                if (writeFailed) {
+                    return 1;
+                }
             }
             if (n == 0) {
                 break;
@@ -401,6 +405,8 @@ int main(int argc, char **argv)
             bufCount = (bufCount - bufPos) % 188;
         }
     }
-    psiArchiver.Flush();
+    if (!psiArchiver.Flush()) {
+        return 1;
+    }
     return 0;
 }

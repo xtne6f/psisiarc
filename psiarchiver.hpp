@@ -13,8 +13,8 @@ public:
     void SetFile(FILE *fp) { m_fp = fp; }
     void SetWriteInterval(uint32_t interval);
     void SetDictionaryMaxBuffSize(size_t size);
-    void Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi);
-    void Flush(bool suppressTrailer = false);
+    bool Add(int pid, int64_t pcr, size_t psiSize, const uint8_t *psi);
+    bool Flush(bool suppressTrailer = false);
 
 private:
     struct DICTIONARY_ITEM
@@ -24,6 +24,7 @@ private:
         std::vector<uint8_t> token;
     };
     void AddToTimeList(uint32_t pcr11khz);
+    static bool WriteBuffer(const uint8_t *buf, size_t size, FILE *fp) { return fwrite(buf, 1, size, fp) == size; }
 
     static const uint32_t UNKNOWN_TIME = 0xffffffff;
     static const uint16_t CODE_NUMBER_BEGIN = 4096;
