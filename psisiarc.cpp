@@ -367,7 +367,7 @@ int main(int argc, char **argv)
         bufCount += n;
         if (bufCount == sizeof(buf) || n == 0) {
             int bufPos = resync_ts(buf, bufCount, &unitSize);
-            for (int i = bufPos; i + 188 <= bufCount; i += unitSize) {
+            for (int i = bufPos; unitSize != 0 && i + unitSize <= bufCount; i += unitSize) {
                 bool writeFailed = false;
                 psiExtractor.AddPacket(buf + i, [&psiArchiver, &cutContext, &writeFailed](int pid, int64_t pcr, size_t psiSize, const uint8_t *psi) {
                     if (!cutContext.enabled) {
@@ -399,10 +399,15 @@ int main(int argc, char **argv)
             if (n == 0) {
                 break;
             }
-            if ((bufPos != 0 || bufCount >= 188) && (bufCount - bufPos) % 188 != 0) {
-                std::copy(buf + bufPos + (bufCount - bufPos) / 188 * 188, buf + bufCount, buf);
+            if (unitSize == 0) {
+                bufCount = 0;
             }
-            bufCount = (bufCount - bufPos) % 188;
+            else {
+                if ((bufPos != 0 || bufCount >= unitSize) && (bufCount - bufPos) % unitSize != 0) {
+                    std::copy(buf + bufPos + (bufCount - bufPos) / unitSize * unitSize, buf + bufCount, buf);
+                }
+                bufCount = (bufCount - bufPos) % unitSize;
+            }
         }
     }
     if (!psiArchiver.Flush()) {
