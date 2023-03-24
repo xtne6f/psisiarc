@@ -2,6 +2,7 @@
 #define INCLUDE_PSIEXTRACTOR_HPP
 
 #include "util.hpp"
+#include <stddef.h>
 #include <stdint.h>
 #include <functional>
 #include <unordered_map>
